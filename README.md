@@ -611,10 +611,10 @@ docker swarm leave --force
 
 This project is part of a Distributed Systems course assignment.
 
-## 👤 Author
+## 👤 Authors
 
-**Osaid Raddad**
-- GitHub: [@Osaid-Raddad](https://github.com/Osaid-Raddad)
+**Osaid Raddad & Omar Khatib**
+- GitHub: [@Osaid-Raddad](https://github.com/Osaid-Raddad) & [@Omar-Maher-Khatib](https://github.com/Omar-Maher-Khatib)
 - Repository: [Dos_Project_Part1](https://github.com/Osaid-Raddad/Dos_Project_Part1)
 
 ## 🙏 Acknowledgments
