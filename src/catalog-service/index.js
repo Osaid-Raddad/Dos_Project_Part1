@@ -1,18 +1,26 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const database = new sqlite3.Database('database.db');
-const axios = require("axios")
 const path = require('path');
+const database = new sqlite3.Database(path.join(__dirname, 'database.db'));
+const axios = require("axios")
 const cors = require("cors")
 const redis = require('redis');
 const util = require("util")
 
-const redisClient = redis.createClient(6379,"redis");
+const redisHost = process.env.REDIS_HOST || 'localhost';
+const redisClient = redis.createClient(6379, redisHost);
 redisClient.set = util.promisify(redisClient.set);
 redisClient.get = util.promisify(redisClient.get);
+redisClient.del = util.promisify(redisClient.del);
 
 redisClient.on("error", (errorMessage) => {
-  console.error(`Redis Error: ${errorMessage}`);
+  console.error(`Redis connection error: ${errorMessage}`);
+  console.error('Redis is required for this service. Exiting...');
+  process.exit(1);
+});
+
+redisClient.on("connect", () => {
+  console.log("Redis connected successfully");
 });
 
 const application = express();
@@ -106,20 +114,101 @@ database.serialize(() => {
     numberOfItems INTEGER ,
     bookCost INTEGER,  
     bookTitle TEXT
-  )`
+  )`,
+    (err) => {
+      if (err) {
+        console.error('Error creating table:', err);
+        return;
+      }
+      
+      // Check if table is empty and seed with initial data
+      database.get('SELECT COUNT(*) as count FROM items', (err, row) => {
+        if (err) {
+          console.error('Error checking table:', err);
+          return;
+        }
+        
+        if (row.count === 0) {
+          console.log('Seeding database with initial data...');
+          const sampleBooks = [
+            { id: 1, bookTopic: 'fiction', numberOfItems: 10, bookCost: 15, bookTitle: 'The Great Adventure' },
+            { id: 2, bookTopic: 'fiction', numberOfItems: 8, bookCost: 20, bookTitle: 'Mystery of the Lost City' },
+            { id: 3, bookTopic: 'science', numberOfItems: 12, bookCost: 25, bookTitle: 'Introduction to Physics' },
+            { id: 4, bookTopic: 'science', numberOfItems: 5, bookCost: 30, bookTitle: 'Advanced Chemistry' },
+            { id: 5, bookTopic: 'history', numberOfItems: 7, bookCost: 18, bookTitle: 'World War Chronicles' },
+            { id: 6, bookTopic: 'history', numberOfItems: 15, bookCost: 22, bookTitle: 'Ancient Civilizations' },
+            { id: 7, bookTopic: 'programming', numberOfItems: 20, bookCost: 35, bookTitle: 'JavaScript Mastery' },
+            { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' }
+          ];
+          
+          const insertStmt = database.prepare(
+            'INSERT INTO items (id, bookTopic, numberOfItems, bookCost, bookTitle) VALUES (?, ?, ?, ?, ?)'
+          );
+          
+          sampleBooks.forEach(book => {
+            insertStmt.run(book.id, book.bookTopic, book.numberOfItems, book.bookCost, book.bookTitle);
+          });
+          
+          insertStmt.finalize(() => {
+            console.log('Database seeded successfully with sample books!');
+          });
+        } else {
+          console.log(`Database already contains ${row.count} items`);
+        }
+      });
+    }
   );
+});
+
+
+application.post('/seed', (request, response) => {
+  const sampleBooks = [
+    { id: 1, bookTopic: 'fiction', numberOfItems: 10, bookCost: 15, bookTitle: 'The Great Adventure' },
+    { id: 2, bookTopic: 'fiction', numberOfItems: 8, bookCost: 20, bookTitle: 'Mystery of the Lost City' },
+    { id: 3, bookTopic: 'science', numberOfItems: 12, bookCost: 25, bookTitle: 'Introduction to Physics' },
+    { id: 4, bookTopic: 'science', numberOfItems: 5, bookCost: 30, bookTitle: 'Advanced Chemistry' },
+    { id: 5, bookTopic: 'history', numberOfItems: 7, bookCost: 18, bookTitle: 'World War Chronicles' },
+    { id: 6, bookTopic: 'history', numberOfItems: 15, bookCost: 22, bookTitle: 'Ancient Civilizations' },
+    { id: 7, bookTopic: 'programming', numberOfItems: 20, bookCost: 35, bookTitle: 'JavaScript Mastery' },
+    { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' }
+  ];
+  
+  database.run('DELETE FROM items', (err) => {
+    if (err) {
+      return response.status(500).json({ error: err.message });
+    }
+    
+    const insertStmt = database.prepare(
+      'INSERT INTO items (id, bookTopic, numberOfItems, bookCost, bookTitle) VALUES (?, ?, ?, ?, ?)'
+    );
+    
+    sampleBooks.forEach(book => {
+      insertStmt.run(book.id, book.bookTopic, book.numberOfItems, book.bookCost, book.bookTitle);
+    });
+    
+    insertStmt.finalize(() => {
+      response.json({ message: 'Database seeded successfully', count: sampleBooks.length });
+    });
+  });
 });
 
 application.get('/search/:bookTopic', async (request, response) => {
   let searchBookTopic = request.params.bookTopic.trim();
   console.log(searchBookTopic);
-  const cachedBookData = await redisClient.get(`${searchBookTopic}`)
-  console.log(cachedBookData,"---")
-  if(cachedBookData){
-    return response.json(JSON.parse(cachedBookData))
+  
+  try {
+    const cachedBookData = await redisClient.get(`${searchBookTopic}`);
+    console.log(cachedBookData,"---")
+    if(cachedBookData){
+      return response.json(JSON.parse(cachedBookData))
+    }
+  } catch (err) {
+    console.error('Cache read failed:', err);
+    return response.status(500).json({ error: 'Cache service unavailable' });
   }
+  
   database.serialize(() => {
-    database.all(`SELECT * FROM items WHERE bookTopic="${searchBookTopic}"`, (errorOnSearch, searchResultRows) => {
+    database.all(`SELECT * FROM items WHERE bookTopic="${searchBookTopic}"`, async (errorOnSearch, searchResultRows) => {
       if (errorOnSearch) {
         console.log(errorOnSearch);
         return;
@@ -134,7 +223,12 @@ application.get('/search/:bookTopic', async (request, response) => {
        
       }
 
-      redisClient.set(`${searchBookTopic}`, JSON.stringify(searchResultRows))
+      try {
+        await redisClient.set(`${searchBookTopic}`, JSON.stringify(searchResultRows));
+      } catch (err) {
+        console.error('Cache write failed:', err);
+        return response.status(500).json({ error: 'Cache service unavailable' });
+      }
       response.send({items: searchResultRows});
     });
   });
@@ -144,7 +238,14 @@ application.get('/search/:bookTopic', async (request, response) => {
 application.get('/info/:id', async (request, response) => {
   let itemId = request.params.id;
   console.log(itemId);
-  const cachedItemData = await redisClient.get(`${itemId}`)
+  
+  let cachedItemData = null;
+  try {
+    cachedItemData = await redisClient.get(`${itemId}`);
+  } catch (err) {
+    console.error('Cache read failed:', err);
+    return response.status(500).json({ error: 'Cache service unavailable' });
+  }
   
   database.serialize(() => {
     database.all(`SELECT id,numberOfItems,bookCost FROM items WHERE id=${itemId}`, async (errorOnInfo, infoResultRows) => {
@@ -159,11 +260,21 @@ application.get('/info/:id', async (request, response) => {
         if(infoResultRows[0].numberOfItems == parsedCachedItem.numberOfItems)
           return response.json(JSON.parse(cachedItemData))
         else{
-          redisClient.del(`${itemId}`)
+          try {
+            await redisClient.del(`${itemId}`);
+          } catch (err) {
+            console.error('Cache delete failed:', err);
+            return response.status(500).json({ error: 'Cache service unavailable' });
+          }
           return response.json({Message:"Invalidate"})
         }
       }
-      redisClient.set(`${itemId}`, JSON.stringify(infoResultRows[0]))
+      try {
+        await redisClient.set(`${itemId}`, JSON.stringify(infoResultRows[0]));
+      } catch (err) {
+        console.error('Cache write failed:', err);
+        return response.status(500).json({ error: 'Cache service unavailable' });
+      }
       console.log(infoResultRows);
       response.json({item: infoResultRows});
     });

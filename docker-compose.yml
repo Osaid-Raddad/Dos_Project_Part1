@@ -5,7 +5,7 @@ services:
     image: catalog-service
     build:
       context: .
-      target: production
+      target: catalog-service-production
     volumes:
       - ./src/catalog-service:/app/src/catalog-service:ro
       - ./src/nginx:/app/src/nginx:ro
@@ -23,7 +23,7 @@ services:
     image: order-service
     build:
       context: .
-      target: production1
+      target: order-service-production
     volumes:
       - ./src/order-service:/app/src/order-service:ro
       - ./src/nginx:/app/src/nginx:ro
@@ -40,6 +40,7 @@ services:
     image: client-service
     build:
       context: .
+      target: client-service-production
     volumes:
       - ./src/client-service:/app/src/client-service:ro
     deploy:

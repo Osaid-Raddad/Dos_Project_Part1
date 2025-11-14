@@ -9,14 +9,14 @@ app.use(cors())
 app.use(express.json());
 app.use(express.urlencoded({extended:true}))
 
-app.post("/purch",async (req,res)=>{
+app.post("/purchase",async (req,res)=>{
 
   const order = {
     "id":req.body.id,
     "orderCost":req.body.orderCost
   };
   try{
-    const response = await axios.post(`http://catalog-server:3005/order`,order);
+    const response = await axios.post(`http://catalog-server:3000/order`,order);
     console.log(response.data)
     
     res.send({message:"Send Request To Catalog"})

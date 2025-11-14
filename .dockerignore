@@ -1,5 +1,30 @@
-node_modules
-npm-debug.log
-.git
+# Dependencies (installed fresh in Docker)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Git files (not needed in image)
+.git/
 .gitignore
-Dockerfile
+
+# Docker files (not needed in image)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+*.md
+
+# Environment files (security)
+.env*
+
+# Database files (will be created in containers)
+*.db
+*.sqlite
