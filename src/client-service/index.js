@@ -41,7 +41,7 @@ import axios from "axios"
         .prompt(questionSearch)
         .then(async (answers) => {
           try {
-            const result = await axios.get(`http://localhost:8083/catalog-server/search/${answers.bookTitle}`);
+            const result = await axios.get(`http://localhost:8083/catalog-service/search/${answers.bookTitle}`);
             console.log('Response Data:', result.data);
           } catch (error) {
             console.error('Error during request:', error.message);
@@ -66,7 +66,7 @@ import axios from "axios"
         .prompt(questionInfo)
         .then(async (answers) => {
           try {
-            const result = await axios.get(`http://localhost:8083/catalog-server/info/${answers.itemNumber}`);
+            const result = await axios.get(`http://localhost:8083/catalog-service/info/${answers.itemNumber}`);
             console.log('Response Data:', result.data);
           } catch (error) {
             console.error('Error during request:', error.message);
@@ -90,7 +90,7 @@ import axios from "axios"
         .prompt(questionPurchase)
         .then(async (answers) => {
             try {
-              const result = await axios.post(`http://localhost:8083/order-server/purch`,{id:answers.itemNumber,orderCost:answers.money})
+              const result = await axios.post(`http://localhost:8083/order-service/purch`,{id:answers.itemNumber,orderCost:answers.money})
               console.log('Response Data:', result.data);
             } catch (error) {
               console.error('Error during request:', error.message);

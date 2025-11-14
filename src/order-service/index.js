@@ -9,6 +9,8 @@ app.use(cors())
 app.use(express.json());
 app.use(express.urlencoded({extended:true}))
 
+const catalogHost = process.env.CATALOG_HOST || 'catalog-server';
+
 app.post("/purchase",async (req,res)=>{
 
   const order = {
@@ -16,13 +18,14 @@ app.post("/purchase",async (req,res)=>{
     "orderCost":req.body.orderCost
   };
   try{
-    const response = await axios.post(`http://catalog-server:3000/order`,order);
+    const response = await axios.post(`http://${catalogHost}:3000/order`,order);
     console.log(response.data)
     
-    res.send({message:"Send Request To Catalog"})
+    // Return the actual response from catalog service
+    res.send(response.data)
   } catch(err){
     console.log(err)
-    res.status(400).send({error:err})
+    res.status(400).send({error:err.message})
   }
 })
 

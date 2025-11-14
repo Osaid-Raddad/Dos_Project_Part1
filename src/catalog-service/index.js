@@ -7,7 +7,7 @@ const cors = require("cors")
 const redis = require('redis');
 const util = require("util")
 
-const redisHost = process.env.REDIS_HOST || 'localhost';
+const redisHost = process.env.REDIS_HOST || 'redis';
 const redisClient = redis.createClient(6379, redisHost);
 redisClient.set = util.promisify(redisClient.set);
 redisClient.get = util.promisify(redisClient.get);

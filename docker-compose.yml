@@ -7,9 +7,8 @@ services:
       context: .
       target: catalog-service-production
     volumes:
-      - ./src/catalog-service:/app/src/catalog-service:ro
+      - catalog-db:/app/src/catalog-service
       - ./src/nginx:/app/src/nginx:ro
-      - ./src/catalog-service/database.db:/app/database.db:rw
     environment:
       - NODE_ENV=production
     deploy:
@@ -17,7 +16,6 @@ services:
       update_config:
         parallelism: 2
         delay: 10s
-      endpoint_mode: dnsrr
 
   order-server:
     image: order-service
@@ -34,7 +32,6 @@ services:
       update_config:
         parallelism: 2
         delay: 10s
-      endpoint_mode: dnsrr
 
   client:
     image: client-service
@@ -48,7 +45,6 @@ services:
       update_config:
         parallelism: 2
         delay: 10s
-      endpoint_mode: dnsrr
 
   nginx:
     image: nginx:stable-alpine
@@ -63,3 +59,6 @@ services:
 
   redis:
     image: redis
+
+volumes:
+  catalog-db:
