@@ -1,12 +1,49 @@
 {
   "name": "dosproject1",
   "version": "1.0.0",
+  "type": "module",
   "description": "Microservices project",
   "main": "index.js",
   "scripts": {
-    "start": "docker-compose up"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-catalog": "nodemon -L src/catalog-service/index.js",
+    "start-order": "nodemon -L src/order-service/index.js",
+    "start-catalog-replica": "nodemon -L src/catalog-service-replica/index.js",
+    "start-order-replica": "nodemon -L src/order-service-replica/index.js",
+    "start-client": "node src/client-service/index.js",
+    "docker": "docker-compose up"
+  },
+  "nodemonConfig": {
+    "delay": "1s",
+    "watch": [
+      "src/catalog-service",
+      "src/order-service",
+      "src/client-service",
+      "src/catalog-service-replica",
+      "src/order-service-replica"
+    ],
+    "ext": "js,json"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.9.9",
+    "@grpc/proto-loader": "^0.7.10",
+    "@npmcli/fs": "^3.1.0",
+    "axios": "^1.6.1",
+    "commander": "^11.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "http": "^0.0.1-security",
+    "inquirer": "^9.2.12",
+    "mongoose": "^8.0.0",
+    "redis": "^3.0.0",
+    "sqlite3": "^5.1.6",
+    "util": "^0.12.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
 }

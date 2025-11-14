@@ -1,13 +1,27 @@
-FROM node:18-alpine
+FROM node as base-image
 
+FROM base-image as catalog-service-production
 WORKDIR /app
-
-COPY package*.json ./
-
+RUN apt-get update && apt-get install -y sqlite3
+COPY package.json .
+COPY ./src/nginx .
 RUN npm install
+COPY ./src/catalog-service .
+CMD ["npm", "run", "start-catalog"]
 
-COPY . .
+FROM base-image as order-service-production
+WORKDIR /app
+RUN apt-get update && apt-get install -y sqlite3
+COPY package.json .
+COPY ./src/nginx .
+RUN npm install
+COPY ./src/order-service .
+CMD ["npm", "run", "start-order"]
 
-EXPOSE 3000
-
-CMD ["node", "index.js"]
+FROM base-image as client-service-production
+WORKDIR /app
+COPY package.json .
+COPY ./src/nginx .
+RUN npm install
+COPY ./src/client-service .
+CMD ["npm", "run", "start-client"]
