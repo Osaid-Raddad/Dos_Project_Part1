@@ -1,0 +1,172 @@
+===============================================
+  CLI CLIENT - MANUAL TESTING COMMANDS
+===============================================
+
+All commands use: node src/client-service/index.mjs
+
+===============================================
+1. SEARCH FOR BOOKS BY TOPIC
+===============================================
+
+Search Fiction Books:
+---------------------
+node src/client-service/index.mjs search-book-title
+When prompted, type: fiction
+
+
+Search Science Books:
+---------------------
+node src/client-service/index.mjs search-book-title
+When prompted, type: science
+
+
+Search Programming Books:
+-------------------------
+node src/client-service/index.mjs search-book-title
+When prompted, type: programming
+
+
+Search History Books:
+---------------------
+node src/client-service/index.mjs search-book-title
+When prompted, type: history
+
+
+Search Non-existent Topic (Empty Result):
+------------------------------------------
+node src/client-service/index.mjs search-book-title
+When prompted, type: nonexistent or whatever you want
+Expected: {"items":[]}
+
+
+===============================================
+2. GET BOOK INFO BY ID
+===============================================
+
+Get Info for Book 1:
+--------------------
+node src/client-service/index.mjs info-book-item-number
+When prompted, type: 1
+Expected: {"id":1,"numberOfItems":8,"bookCost":15}
+
+
+Get Info for Book 5:
+--------------------
+node src/client-service/index.mjs info-book-item-number
+When prompted, type: 5
+Expected: {"id":5,"numberOfItems":7,"bookCost":18}
+
+
+Get Info for Book 7:
+--------------------
+node src/client-service/index.mjs info-book-item-number
+When prompted, type: 7
+Expected: {"id":7,"numberOfItems":19,"bookCost":35}
+
+
+Get Info for Book 8:
+--------------------
+node src/client-service/index.mjs info-book-item-number
+When prompted, type: 8
+Expected: {"id":8,"numberOfItems":10,"bookCost":40}
+
+
+===============================================
+3. PURCHASE BOOK - SUCCESS
+===============================================
+
+Purchase Book 7 (Sufficient Payment):
+-------------------------------------
+node src/client-service/index.mjs purchase-book-by-item-number
+When prompted for item number, type: 7
+When prompted for money, type: 40
+Expected: {"message":"Book has been purchased"}
+
+
+Purchase Book 5 (Sufficient Payment):
+-------------------------------------
+node src/client-service/index.mjs purchase-book-by-item-number
+When prompted for item number, type: 5
+When prompted for money, type: 20
+Expected: {"message":"Book has been purchased"}
+
+
+===============================================
+4. PURCHASE BOOK - INSUFFICIENT PAYMENT
+===============================================
+
+Purchase Book 7 (Insufficient Payment):
+---------------------------------------
+node src/client-service/index.mjs purchase-book-by-item-number
+When prompted for item number, type: 7
+When prompted for money, type: 20
+Expected: {"error":"you should pay 35$ but you paid 20$"}
+
+
+Purchase Book 8 (Insufficient Payment):
+---------------------------------------
+node src/client-service/index.mjs purchase-book-by-item-number
+When prompted for item number, type: 8
+When prompted for money, type: 30
+Expected: {"error":"you should pay 40$ but you paid 30$"}
+
+
+===============================================
+5. PURCHASE BOOK - BOOK NOT FOUND
+===============================================
+
+Purchase Non-existent Book:
+---------------------------
+node src/client-service/index.mjs purchase-book-by-item-number
+When prompted for item number, type: 99
+When prompted for money, type: 50
+Expected: {"error":"Book not found"}
+
+
+===============================================
+6. PURCHASE BOOK - OUT OF STOCK
+===============================================
+
+Note: To test this, you need to purchase the same book 
+multiple times until stock reaches 0.
+
+Example - Deplete Book 4 stock (5 items):
+------------------------------------------
+Run this command 5 times:
+node src/client-service/index.mjs purchase-book-by-item-number
+Item number: 4
+Money: 30
+
+After 5th purchase, run again:
+node src/client-service/index.mjs purchase-book-by-item-number
+Item number: 4
+Money: 30
+Expected: {"error":"Book is out of stock"}
+
+
+===============================================
+7. VIEW HELP
+===============================================
+
+node src/client-service/index.mjs --help
+
+
+===============================================
+8. SHORT ALIASES
+===============================================
+
+Instead of full command names, you can use:
+- s  = search-book-title
+- i  = info-book-item-number
+- p  = purchase-book-by-item-number
+
+Examples:
+---------
+node src/client-service/index.mjs s
+node src/client-service/index.mjs i
+node src/client-service/index.mjs p
+
+
+===============================================
+END OF CLI COMMANDS
+===============================================
