@@ -1,58 +1,59 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('database.db');
+const database = new sqlite3.Database('database.db');
 const axios = require("axios")
 const path = require('path');
 const cors = require("cors")
 const redis = require('redis');
 const util = require("util")
 
-const client = redis.createClient(6379,"redis");
-client.set = util.promisify(client.set);
-client.get = util.promisify(client.get);
+const redisClient = redis.createClient(6379,"redis");
+redisClient.set = util.promisify(redisClient.set);
+redisClient.get = util.promisify(redisClient.get);
 
-client.on("error", (err) => {
-  console.error(`Redis Error: ${err}`);
+redisClient.on("error", (errorMessage) => {
+  console.error(`Redis Error: ${errorMessage}`);
 });
 
-const app = express();
-const port = 3005;
+const application = express();
+const serverPort = 3000;
 
-app.use(express.json());
-app.use(cors())
+application.use(express.json());
+application.use(cors())
 
-let orderPrice =0;
-let numberIt ;
-let test;
-let lastResult;
-let lastText;
-app.post("/order",(req,res)=>{
-  const order = req.body
-  const searchId = req.body.id
-  const orderCost = req.body.orderCost
+let calculatedOrderPrice = 0;
+let previousNumberOfItems;
+let updateTestResult;
+let wasOrderSuccessful;
+let orderResultMessage;
+
+application.post("/order",(request, response) => {
+  const incomingOrder = request.body
+  const bookSearchId = request.body.id
+  const customerOrderCost = request.body.orderCost
   
-db.all(`SELECT * FROM items WHERE id = ?`, [searchId], (err, row) => {
-    if (err) {
-      console.error(err.message);
+  database.all(`SELECT * FROM items WHERE id = ?`, [bookSearchId], (errorOnSelect, selectedRows) => {
+    if (errorOnSelect) {
+      console.error(errorOnSelect.message);
       return;
     }
     
-    if (!!row[0]) {
-      numberIt = row[0].numberOfItems;
-      orderPrice = row[0].bookCost;
-      let numberOfItems = row[0].numberOfItems-1;
-      console.log(orderPrice)
-      console.log(orderCost)
+    if (!!selectedRows[0]) {
+      previousNumberOfItems = selectedRows[0].numberOfItems;
+      calculatedOrderPrice = selectedRows[0].bookCost;
+      let updatedNumberOfItems = selectedRows[0].numberOfItems - 1;
+      console.log(calculatedOrderPrice)
+      console.log(customerOrderCost)
       
-      if (orderCost >= orderPrice) {
+      if (customerOrderCost >= calculatedOrderPrice) {
         
-        const remainingAmount = orderCost - orderPrice;
-        db.run(
+        const customerRemainingAmount = customerOrderCost - calculatedOrderPrice;
+        database.run(
           `UPDATE items SET numberOfItems = ? WHERE id = ?`,
-          [numberOfItems, searchId],
-          function (err) {
-            if (err) {
-              console.error('Error updating record:', err.message);
+          [updatedNumberOfItems, bookSearchId],
+          function (errorOnUpdate) {
+            if (errorOnUpdate) {
+              console.error('Error updating record:', errorOnUpdate.message);
               return;
             }
             
@@ -63,31 +64,29 @@ db.all(`SELECT * FROM items WHERE id = ?`, [searchId], (err, row) => {
       
       
     } 
-    db.all(`SELECT * FROM items WHERE id = ?`, [searchId], (err, updatedRow) => {
-      if (err) {
-          console.error(err.message);
+    database.all(`SELECT * FROM items WHERE id = ?`, [bookSearchId], (errorOnSecondSelect, updatedSelectedRow) => {
+      if (errorOnSecondSelect) {
+          console.error(errorOnSecondSelect.message);
           return;
         }
-      if(updatedRow){
-        // console.log({ numberOfItemsBeforeUpdate:numberIt,data: updatedRow[0]})
+      if(updatedSelectedRow){
         
-        if(updatedRow.length != 0){
-          // console.log(updatedRow[0],"eeee")
-          test = { numberOfItemsBeforeUpdate:numberIt,data: updatedRow}
-          if(numberIt === updatedRow[0].numberOfItems){
-            lastResult = false
+        if(updatedSelectedRow.length != 0){
+          updateTestResult = { numberOfItemsBeforeUpdate: previousNumberOfItems, data: updatedSelectedRow}
+          if(previousNumberOfItems === updatedSelectedRow[0].numberOfItems){
+            wasOrderSuccessful = false
           }
           else{
-            lastResult = true
+            wasOrderSuccessful = true
           
           }
-          lastText = `Bought book ${updatedRow[0].bookTitle}`
+          orderResultMessage = `Bought book ${updatedSelectedRow[0].bookTitle}`
         }
-        // console.log(test)
-        if(lastResult)
-          res.send({result:{status:"success",message:lastText}});
+        
+        if(wasOrderSuccessful)
+          response.send({result:{status:"success", message: orderResultMessage}});
         else
-          res.send({result:{status:"fail",message:"Failed to buy The book!!"}})
+          response.send({result:{status:"fail", message:"Failed to buy The book!!"}})
       }  
       
     })
@@ -98,6 +97,49 @@ db.all(`SELECT * FROM items WHERE id = ?`, [searchId], (err, row) => {
 });
 
 
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+
+database.serialize(() => {
+  database.run(
+    `CREATE TABLE IF NOT EXISTS items (
+    id INTEGER PRIMARY KEY ,  
+    bookTopic TEXT,
+    numberOfItems INTEGER ,
+    bookCost INTEGER,  
+    bookTitle TEXT
+  )`
+  );
+});
+
+application.get('/search/:bookTopic', async (request, response) => {
+  let searchBookTopic = request.params.bookTopic.trim();
+  console.log(searchBookTopic);
+  const cachedBookData = await redisClient.get(`${searchBookTopic}`)
+  console.log(cachedBookData,"---")
+  if(cachedBookData){
+    return response.json(JSON.parse(cachedBookData))
+  }
+  database.serialize(() => {
+    database.all(`SELECT * FROM items WHERE bookTopic="${searchBookTopic}"`, (errorOnSearch, searchResultRows) => {
+      if (errorOnSearch) {
+        console.log(errorOnSearch);
+        return;
+      }
+      for (let rowIndex = 0; rowIndex < searchResultRows.length; rowIndex++) {
+        console.log(
+          searchResultRows[rowIndex].id,
+          searchResultRows[rowIndex].numberOfItems,
+          searchResultRows[rowIndex].bookCost,
+          searchResultRows[rowIndex].bookTopic
+        );
+       
+      }
+
+      redisClient.set(`${searchBookTopic}`, JSON.stringify(searchResultRows))
+      response.send({items: searchResultRows});
+    });
+  });
+});
+
+application.listen(serverPort, () => {
+  console.log(`Server is running on http://localhost:${serverPort}`);
 });
