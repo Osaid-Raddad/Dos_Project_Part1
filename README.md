@@ -526,7 +526,7 @@ docker swarm leave --force
 
 ### Purchase Success Flow
 ```json
-// Request: POST /order-service/purch
+// Request: POST /order-service/purchase
 {
   "id": 7,
   "orderCost": 40
@@ -540,7 +540,7 @@ docker swarm leave --force
 
 ### Purchase Failure - Insufficient Payment
 ```json
-// Request: POST /order-service/purch
+// Request: POST /order-service/purchase
 {
   "id": 7,
   "orderCost": 20
@@ -554,7 +554,7 @@ docker swarm leave --force
 
 ### Purchase Failure - Out of Stock
 ```json
-// Request: POST /order-service/purch
+// Request: POST /order-service/purchase
 {
   "id": 99,
   "orderCost": 50
