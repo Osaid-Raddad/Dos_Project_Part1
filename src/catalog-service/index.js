@@ -43,65 +43,58 @@ application.post("/order",(request, response) => {
   database.all(`SELECT * FROM items WHERE id = ?`, [bookSearchId], (errorOnSelect, selectedRows) => {
     if (errorOnSelect) {
       console.error(errorOnSelect.message);
-      return;
+      return response.status(500).json({error: "Database error"});
     }
     
-    if (!!selectedRows[0]) {
-      previousNumberOfItems = selectedRows[0].numberOfItems;
-      calculatedOrderPrice = selectedRows[0].bookCost;
-      let updatedNumberOfItems = selectedRows[0].numberOfItems - 1;
-      console.log(calculatedOrderPrice)
-      console.log(customerOrderCost)
-      
-      if (customerOrderCost >= calculatedOrderPrice) {
-        
-        const customerRemainingAmount = customerOrderCost - calculatedOrderPrice;
-        database.run(
-          `UPDATE items SET numberOfItems = ? WHERE id = ?`,
-          [updatedNumberOfItems, bookSearchId],
-          function (errorOnUpdate) {
-            if (errorOnUpdate) {
-              console.error('Error updating record:', errorOnUpdate.message);
-              return;
-            }
-            
-          }
-          
-        );
-      }
-      
-      
-    } 
-    database.all(`SELECT * FROM items WHERE id = ?`, [bookSearchId], (errorOnSecondSelect, updatedSelectedRow) => {
-      if (errorOnSecondSelect) {
-          console.error(errorOnSecondSelect.message);
-          return;
-        }
-      if(updatedSelectedRow){
-        
-        if(updatedSelectedRow.length != 0){
-          updateTestResult = { numberOfItemsBeforeUpdate: previousNumberOfItems, data: updatedSelectedRow}
-          if(previousNumberOfItems === updatedSelectedRow[0].numberOfItems){
-            wasOrderSuccessful = false
-          }
-          else{
-            wasOrderSuccessful = true
-          
-          }
-          orderResultMessage = `Bought book ${updatedSelectedRow[0].bookTitle}`
-        }
-        
-        if(wasOrderSuccessful)
-          response.send({result:{status:"success", message: orderResultMessage}});
-        else
-          response.send({result:{status:"fail", message:"Failed to buy The book!!"}})
-      }  
-      
-    })
+    // Book not found
+    if (!selectedRows || selectedRows.length === 0) {
+      return response.status(404).json({error: "Book not found"});
+    }
     
+    const book = selectedRows[0];
+    calculatedOrderPrice = book.bookCost;
+    previousNumberOfItems = book.numberOfItems;
+    
+    console.log('Book Cost:', calculatedOrderPrice);
+    console.log('Customer Payment:', customerOrderCost);
+    console.log('Current Stock:', previousNumberOfItems);
+    
+    // Check if out of stock (MUST be > 0 to purchase)
+    if (previousNumberOfItems <= 0) {
+      return response.status(400).json({error: "Book is out of stock"});
+    }
+    
+    // Check if payment is sufficient
+    if (customerOrderCost < calculatedOrderPrice) {
+      return response.status(400).json({
+        error: `you should pay ${calculatedOrderPrice}$ but you paid ${customerOrderCost}$`
+      });
+    }
+    
+    // Stock is available (> 0) and payment is sufficient - proceed with purchase
+    let updatedNumberOfItems = previousNumberOfItems - 1;
+    
+    database.run(
+      `UPDATE items SET numberOfItems = ? WHERE id = ?`,
+      [updatedNumberOfItems, bookSearchId],
+      function (errorOnUpdate) {
+        if (errorOnUpdate) {
+          console.error('Error updating record:', errorOnUpdate.message);
+          return response.status(500).json({error: "Failed to update inventory"});
+        }
+        
+        console.log(`✅ Successfully purchased book ID ${bookSearchId}. Stock: ${previousNumberOfItems} -> ${updatedNumberOfItems}`);
+        
+        // Invalidate cache for this book
+        redisClient.del(`${bookSearchId}`).catch(err => {
+          console.error('Cache invalidation failed:', err);
+        });
+        
+        // Return success response
+        response.json({message: "Book has been purchased"});
+      }
+    );
   });
- 
-
 });
 
 
@@ -200,7 +193,8 @@ application.get('/search/:bookTopic', async (request, response) => {
     const cachedBookData = await redisClient.get(`${searchBookTopic}`);
     console.log(cachedBookData,"---")
     if(cachedBookData){
-      return response.json(JSON.parse(cachedBookData))
+      // Return cached data wrapped in {items: ...} format
+      return response.json({items: JSON.parse(cachedBookData)})
     }
   } catch (err) {
     console.error('Cache read failed:', err);
@@ -211,8 +205,9 @@ application.get('/search/:bookTopic', async (request, response) => {
     database.all(`SELECT * FROM items WHERE bookTopic="${searchBookTopic}"`, async (errorOnSearch, searchResultRows) => {
       if (errorOnSearch) {
         console.log(errorOnSearch);
-        return;
+        return response.status(500).json({ error: 'Database error' });
       }
+      
       for (let rowIndex = 0; rowIndex < searchResultRows.length; rowIndex++) {
         console.log(
           searchResultRows[rowIndex].id,
@@ -220,16 +215,18 @@ application.get('/search/:bookTopic', async (request, response) => {
           searchResultRows[rowIndex].bookCost,
           searchResultRows[rowIndex].bookTopic
         );
-       
       }
 
       try {
+        // Cache the results array (will be wrapped in {items: ...} when returned)
         await redisClient.set(`${searchBookTopic}`, JSON.stringify(searchResultRows));
       } catch (err) {
         console.error('Cache write failed:', err);
         return response.status(500).json({ error: 'Cache service unavailable' });
       }
-      response.send({items: searchResultRows});
+      
+      // Return wrapped in {items: ...} format
+      response.json({items: searchResultRows});
     });
   });
 });
@@ -251,8 +248,13 @@ application.get('/info/:id', async (request, response) => {
     database.all(`SELECT id,numberOfItems,bookCost FROM items WHERE id=${itemId}`, async (errorOnInfo, infoResultRows) => {
       if (errorOnInfo) {
         console.log(errorOnInfo);
-        return;
+        return response.status(500).json({ error: 'Database error' });
       }
+      
+      if (!infoResultRows || infoResultRows.length === 0) {
+        return response.status(404).json({ error: 'Book not found' });
+      }
+      
       if(cachedItemData){
         let parsedCachedItem = JSON.parse(cachedItemData)
         console.log(infoResultRows[0].numberOfItems,"--")
@@ -276,7 +278,8 @@ application.get('/info/:id', async (request, response) => {
         return response.status(500).json({ error: 'Cache service unavailable' });
       }
       console.log(infoResultRows);
-      response.json({item: infoResultRows});
+      // Return just the book object, not wrapped in {item: ...}
+      response.json(infoResultRows[0]);
     });
   });
 });

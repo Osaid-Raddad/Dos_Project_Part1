@@ -90,7 +90,7 @@ import axios from "axios"
         .prompt(questionPurchase)
         .then(async (answers) => {
             try {
-              const result = await axios.post(`http://localhost:8083/order-service/purch`,{id:answers.itemNumber,orderCost:answers.money})
+              const result = await axios.post(`http://localhost:8083/order-service/purchase`,{id:answers.itemNumber,orderCost:answers.money})
               console.log('Response Data:', result.data);
             } catch (error) {
               console.error('Error during request:', error.message);
