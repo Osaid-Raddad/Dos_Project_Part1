@@ -25,7 +25,12 @@ app.post("/purchase",async (req,res)=>{
     res.send(response.data)
   } catch(err){
     console.log(err)
-    res.status(400).send({error:err.message})
+    // Return the error response from catalog service
+    if (err.response && err.response.data) {
+      res.status(err.response.status || 400).send(err.response.data)
+    } else {
+      res.status(400).send({error: err.message})
+    }
   }
 })
 

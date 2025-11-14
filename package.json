@@ -1,7 +1,6 @@
 {
   "name": "dosproject1",
   "version": "1.0.0",
-  "type": "module",
   "description": "Microservices project",
   "main": "index.js",
   "scripts": {
@@ -10,7 +9,7 @@
     "start-order": "nodemon -L src/order-service/index.js",
     "start-catalog-replica": "nodemon -L src/catalog-service-replica/index.js",
     "start-order-replica": "nodemon -L src/order-service-replica/index.js",
-    "start-client": "node src/client-service/index.js",
+    "start-client": "node src/client-service/index.mjs",
     "docker": "docker-compose up"
   },
   "nodemonConfig": {
