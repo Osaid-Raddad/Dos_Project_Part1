@@ -140,6 +140,37 @@ application.get('/search/:bookTopic', async (request, response) => {
   });
 });
 
+
+application.get('/info/:id', async (request, response) => {
+  let itemId = request.params.id;
+  console.log(itemId);
+  const cachedItemData = await redisClient.get(`${itemId}`)
+  
+  database.serialize(() => {
+    database.all(`SELECT id,numberOfItems,bookCost FROM items WHERE id=${itemId}`, async (errorOnInfo, infoResultRows) => {
+      if (errorOnInfo) {
+        console.log(errorOnInfo);
+        return;
+      }
+      if(cachedItemData){
+        let parsedCachedItem = JSON.parse(cachedItemData)
+        console.log(infoResultRows[0].numberOfItems,"--")
+        console.log(parsedCachedItem.numberOfItems,"--")
+        if(infoResultRows[0].numberOfItems == parsedCachedItem.numberOfItems)
+          return response.json(JSON.parse(cachedItemData))
+        else{
+          redisClient.del(`${itemId}`)
+          return response.json({Message:"Invalidate"})
+        }
+      }
+      redisClient.set(`${itemId}`, JSON.stringify(infoResultRows[0]))
+      console.log(infoResultRows);
+      response.json({item: infoResultRows});
+    });
+  });
+});
+ 
+
 application.listen(serverPort, () => {
   console.log(`Server is running on http://localhost:${serverPort}`);
 });
