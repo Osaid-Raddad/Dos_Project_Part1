@@ -15,13 +15,60 @@ redisClient.del = util.promisify(redisClient.del);
 
 redisClient.on("error", (errorMessage) => {
   console.error(`Redis connection error: ${errorMessage}`);
-  console.error('Redis is required for this service. Exiting...');
-  process.exit(1);
+  console.warn('⚠️ Redis not available yet, will retry automatically...');
+  // Don't exit - let it retry automatically
 });
 
 redisClient.on("connect", () => {
-  console.log("Redis connected successfully");
+  console.log("✅ Redis connected successfully");
 });
+
+// Front-end server configuration for cache invalidation
+const frontendHost = process.env.FRONTEND_HOST || 'frontend';
+const frontendPort = process.env.FRONTEND_PORT || 3005;
+
+// Replica synchronization configuration
+const isWriteMaster = process.env.WRITE_MASTER === 'true';
+const replicaHost = process.env.REPLICA_HOST || null;
+
+console.log(`🔧 Catalog service mode: ${isWriteMaster ? 'WRITE MASTER' : 'READ REPLICA'}`);
+if (replicaHost) {
+  console.log(`🔧 Replica host: ${replicaHost}`);
+}
+
+// Function to send cache invalidation request to front-end server
+async function invalidateFrontendCache(keys) {
+  try {
+    console.log(`📤 Sending cache invalidation to front-end for keys: ${keys.join(', ')}`);
+    const response = await axios.post(`http://${frontendHost}:${frontendPort}/cache/invalidate`, {
+      keys: keys
+    });
+    console.log(`✅ Front-end cache invalidated successfully`);
+    return response.data;
+  } catch (err) {
+    console.error(`❌ Failed to invalidate front-end cache: ${err.message}`);
+    // Continue even if cache invalidation fails
+    return null;
+  }
+}
+
+// Function to synchronize write to replica
+async function syncWriteToReplica(bookId, newStock) {
+  if (!replicaHost) {
+    return; // No replica configured
+  }
+  
+  try {
+    console.log(`🔄 Syncing write to replica: book ${bookId}, new stock: ${newStock}`);
+    await axios.post(`http://${replicaHost}:3000/sync-write`, {
+      bookId: bookId,
+      numberOfItems: newStock
+    });
+    console.log(`✅ Replica synchronized successfully`);
+  } catch (err) {
+    console.error(`❌ Failed to sync to replica: ${err.message}`);
+  }
+}
 
 const application = express();
 const serverPort = 3000;
@@ -35,7 +82,33 @@ let updateTestResult;
 let wasOrderSuccessful;
 let orderResultMessage;
 
+// Sync write endpoint (called by write master to update replicas)
+application.post("/sync-write", (request, response) => {
+  const { bookId, numberOfItems } = request.body;
+  
+  console.log(`🔄 Received sync request for book ${bookId}, new stock: ${numberOfItems}`);
+  
+  database.run(
+    `UPDATE items SET numberOfItems = ? WHERE id = ?`,
+    [numberOfItems, bookId],
+    function (errorOnUpdate) {
+      if (errorOnUpdate) {
+        console.error('Sync write failed:', errorOnUpdate.message);
+        return response.status(500).json({error: "Sync failed"});
+      }
+      
+      console.log(`✅ Replica updated: book ${bookId}, stock: ${numberOfItems}`);
+      response.json({message: "Replica synchronized"});
+    }
+  );
+});
+
 application.post("/order",(request, response) => {
+  // Only write master can process orders
+  if (!isWriteMaster) {
+    return response.status(403).json({error: "This replica is read-only. Orders must go through write master."});
+  }
+  
   const incomingOrder = request.body
   const bookSearchId = request.body.id
   const customerOrderCost = request.body.orderCost
@@ -74,6 +147,22 @@ application.post("/order",(request, response) => {
     // Stock is available (> 0) and payment is sufficient - proceed with purchase
     let updatedNumberOfItems = previousNumberOfItems - 1;
     
+    // IMPORTANT: Invalidate cache BEFORE database write (server-push technique)
+    const keysToInvalidate = [
+      `${bookSearchId}`,        // Invalidate local Redis cache key (book ID)
+      `info:${bookSearchId}`,   // Invalidate front-end cache for info endpoint
+      book.bookTopic            // Invalidate topic search cache
+    ];
+    
+    // Send invalidation request to front-end server
+    invalidateFrontendCache([`info:${bookSearchId}`, `search:${book.bookTopic}`])
+      .catch(err => console.error('Cache invalidation error:', err));
+    
+    // Also invalidate local catalog service cache
+    redisClient.del(`${bookSearchId}`).catch(err => {
+      console.error('Local cache invalidation failed:', err);
+    });
+    
     database.run(
       `UPDATE items SET numberOfItems = ? WHERE id = ?`,
       [updatedNumberOfItems, bookSearchId],
@@ -85,10 +174,9 @@ application.post("/order",(request, response) => {
         
         console.log(`✅ Successfully purchased book ID ${bookSearchId}. Stock: ${previousNumberOfItems} -> ${updatedNumberOfItems}`);
         
-        // Invalidate cache for this book
-        redisClient.del(`${bookSearchId}`).catch(err => {
-          console.error('Cache invalidation failed:', err);
-        });
+        // Synchronize write to replica
+        syncWriteToReplica(bookSearchId, updatedNumberOfItems)
+          .catch(err => console.error('Replica sync error:', err));
         
         // Return success response
         response.json({message: "Book has been purchased"});
@@ -131,7 +219,10 @@ database.serialize(() => {
             { id: 5, bookTopic: 'history', numberOfItems: 7, bookCost: 18, bookTitle: 'World War Chronicles' },
             { id: 6, bookTopic: 'history', numberOfItems: 15, bookCost: 22, bookTitle: 'Ancient Civilizations' },
             { id: 7, bookTopic: 'programming', numberOfItems: 20, bookCost: 35, bookTitle: 'JavaScript Mastery' },
-            { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' }
+            { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' },
+            { id: 9, bookTopic: 'education', numberOfItems: 15, bookCost: 28, bookTitle: 'How to finish Project 3 on time' },
+            { id: 10, bookTopic: 'education', numberOfItems: 12, bookCost: 32, bookTitle: 'Why theory classes are so hard' },
+            { id: 11, bookTopic: 'nature', numberOfItems: 18, bookCost: 24, bookTitle: 'Spring in the Pioneer Valley' }
           ];
           
           const insertStmt = database.prepare(
@@ -163,7 +254,10 @@ application.post('/seed', (request, response) => {
     { id: 5, bookTopic: 'history', numberOfItems: 7, bookCost: 18, bookTitle: 'World War Chronicles' },
     { id: 6, bookTopic: 'history', numberOfItems: 15, bookCost: 22, bookTitle: 'Ancient Civilizations' },
     { id: 7, bookTopic: 'programming', numberOfItems: 20, bookCost: 35, bookTitle: 'JavaScript Mastery' },
-    { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' }
+    { id: 8, bookTopic: 'programming', numberOfItems: 10, bookCost: 40, bookTitle: 'Node.js Complete Guide' },
+    { id: 9, bookTopic: 'education', numberOfItems: 15, bookCost: 28, bookTitle: 'How to finish Project 3 on time' },
+    { id: 10, bookTopic: 'education', numberOfItems: 12, bookCost: 32, bookTitle: 'Why theory classes are so hard' },
+    { id: 11, bookTopic: 'nature', numberOfItems: 18, bookCost: 24, bookTitle: 'Spring in the Pioneer Valley' }
   ];
   
   database.run('DELETE FROM items', (err) => {

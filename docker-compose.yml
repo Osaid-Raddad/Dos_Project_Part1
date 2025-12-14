@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  # Front-end server with integrated caching and load balancing
+  frontend:
+    image: frontend-service
+    build:
+      context: .
+      target: frontend-service-production
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - CATALOG_HOSTS=catalog-server
+      - ORDER_HOSTS=order-server
+      - FRONTEND_HOST=frontend
+      - FRONTEND_PORT=3005
+    depends_on:
+      - redis
+      - catalog-server
+      - order-server
+    deploy:
+      replicas: 1
+
+  # Catalog service with replica synchronization
   catalog-server:
     image: catalog-service
     build:
@@ -11,6 +32,13 @@ services:
       - ./src/nginx:/app/src/nginx:ro
     environment:
       - NODE_ENV=production
+      - REDIS_HOST=redis
+      - FRONTEND_HOST=frontend
+      - FRONTEND_PORT=3005
+      - WRITE_MASTER=true
+      - REPLICA_HOST=catalog-server
+    depends_on:
+      - redis
     deploy:
       replicas: 2
       update_config:
@@ -27,6 +55,9 @@ services:
       - ./src/nginx:/app/src/nginx:ro
     environment:
       - NODE_ENV=production
+      - CATALOG_HOST=catalog-server
+    depends_on:
+      - catalog-server
     deploy:
       replicas: 2
       update_config:
@@ -53,6 +84,7 @@ services:
     volumes:
       - ./src/nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
+      - frontend
       - catalog-server
       - order-server
       - client

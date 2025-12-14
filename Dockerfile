@@ -1,5 +1,12 @@
 FROM node as base-image
 
+FROM base-image as frontend-service-production
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY ./src/frontend-service ./src/frontend-service
+CMD ["node", "src/frontend-service/index.js"]
+
 FROM base-image as catalog-service-production
 WORKDIR /app
 RUN apt-get update && apt-get install -y sqlite3
